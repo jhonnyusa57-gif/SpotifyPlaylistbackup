@@ -30,7 +30,7 @@ export default function Home() {
   useEffect(() => {
     const err = new URLSearchParams(window.location.search).get('error')
     if (err) {
-      setResult({ ok: false, text: LOGIN_ERRORS[err] || 'Login failed. Please try again.' })
+      setResult({ ok: false, text: LOGIN_ERRORS[err] || `Login failed: ${err}. If it says access_denied, add this account under Users in the Spotify dashboard.` })
       window.history.replaceState(null, '', '/')
     }
     try {

@@ -4,7 +4,10 @@ import { NextResponse } from 'next/server'
 const home = (path) => new URL(path, process.env.SPOTIFY_REDIRECT_URI)
 
 export async function GET(req) {
-  const code = req.nextUrl.searchParams.get('code')
+  const sp = req.nextUrl.searchParams
+  const code = sp.get('code')
+  const authError = sp.get('error') // Spotify sends this when authorize is blocked (e.g. access_denied)
+  if (authError) return NextResponse.redirect(home(`/?error=${encodeURIComponent(authError)}`))
   if (!code) return NextResponse.redirect(home('/?error=denied'))
   if (!process.env.SPOTIFY_CLIENT_SECRET) return NextResponse.redirect(home('/?error=config'))
 
@@ -25,7 +28,7 @@ export async function GET(req) {
     }),
   })
   const data = await r.json()
-  if (!data.access_token) return NextResponse.redirect(home('/?error=token'))
+  if (!data.access_token) return NextResponse.redirect(home(`/?error=${encodeURIComponent(data.error || 'token')}`))
 
   const res = NextResponse.redirect(home('/'))
   res.cookies.set('sp_token', data.access_token, {
