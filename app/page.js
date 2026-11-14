@@ -229,7 +229,7 @@ export default function Home() {
 
                   {onSourceAccount ? (
                     <>
-                      <p className="hint">Now switch to the account you want to copy into. Your selection is saved.</p>
+                      <p className="hint">Next, tap the button below. On the Spotify screen, tap <b>&ldquo;Not you?&rdquo;</b> to log out of this account, then log in with the account you want to copy into. Your selection is saved.</p>
                       <a className="btn primary full" href="/api/login">
                         <SpotifyIcon size={18} /> Switch to another account
                       </a>
