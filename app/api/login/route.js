@@ -7,6 +7,8 @@ const SCOPES = [
   'playlist-modify-public',
   'playlist-modify-private',
   'user-library-modify',
+  'user-follow-read',
+  'user-follow-modify',
 ].join(' ')
 
 export async function GET() {

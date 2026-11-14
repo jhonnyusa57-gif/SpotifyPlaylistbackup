@@ -22,7 +22,9 @@ export default function Home() {
   const [backup, setBackup] = useState(null)
   const [skip, setSkip] = useState({}) // { [playlistIndex]: true } means deselected
   const [skipLiked, setSkipLiked] = useState(false)
+  const [skipArtists, setSkipArtists] = useState(false)
   const [busy, setBusy] = useState('')
+  const [progress, setProgress] = useState(null) // { done, total, name }
   const [result, setResult] = useState(null) // { ok, text }
 
   useEffect(() => {
@@ -51,9 +53,10 @@ export default function Home() {
       setBackup(data)
       setSkip({})
       setSkipLiked(false)
+      setSkipArtists(false)
       // shortcut: localStorage caps around 5 MB, fine for normal libraries; huge ones may not persist the switch
       try { localStorage.setItem(KEY, JSON.stringify(data)) } catch {}
-      setResult({ ok: true, text: `Loaded ${data.playlists.length} playlists and ${data.likedSongs.length} liked songs.` })
+      setResult({ ok: true, text: `Loaded ${data.playlists.length} playlists, ${data.likedSongs.length} liked songs${(data.followedArtists?.length) ? ` and ${data.followedArtists.length} followed artists` : ''}.` })
     } catch (e) {
       setResult({ ok: false, text: e.message })
     }
@@ -63,23 +66,58 @@ export default function Home() {
   async function transfer() {
     setBusy('transfer')
     setResult(null)
+    setProgress({ done: 0, total: selectedPlaylists.length, name: '' })
     try {
       const payload = {
         playlists: backup.playlists.filter((_, i) => !skip[i]),
         likedSongs: skipLiked ? [] : backup.likedSongs,
+        followedArtists: skipArtists ? [] : (backup.followedArtists || []),
       }
       const r = await fetch('/api/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
-      const d = await r.json()
-      if (d.error) throw new Error(d.error)
-      setResult({ ok: true, text: `Transferred to ${d.importedTo}: ${d.playlistsMade} playlists, ${d.tracksAdded} tracks and ${d.likedAdded} liked songs.` })
+      if (!r.ok || !r.body) throw new Error('Import failed to start.')
+
+      const reader = r.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let done = null
+      while (true) {
+        const { value, done: finished } = await reader.read()
+        if (finished) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() // keep the partial last line
+        for (const line of lines) {
+          if (!line.trim()) continue
+          const msg = JSON.parse(line)
+          if (msg.type === 'progress') setProgress({ done: msg.done, total: msg.total, name: msg.name })
+          else if (msg.type === 'error') throw new Error(msg.error)
+          else if (msg.type === 'done') done = msg
+        }
+      }
+      if (!done) throw new Error('Import ended unexpectedly.')
+
+      const parts = [`${done.playlistsMade} playlists`, `${done.tracksAdded} tracks`, `${done.likedAdded} liked songs`]
+      if (done.artistsFollowed) parts.push(`${done.artistsFollowed} artists`)
+      const skippedNote = done.skipped ? ` (skipped ${done.skipped} already there)` : ''
+      setResult({ ok: true, text: `Transferred to ${done.importedTo}: ${parts.join(', ')}${skippedNote}.` })
     } catch (e) {
       setResult({ ok: false, text: e.message })
     }
     setBusy('')
+    setProgress(null)
+  }
+
+  function downloadBackup() {
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = 'streamlify-backup.json'
+    a.click()
+    URL.revokeObjectURL(a.href)
   }
 
   function startOver() {
@@ -90,13 +128,15 @@ export default function Home() {
 
   const onSourceAccount = backup && me && backup.account?.id === me.id
   const selectedPlaylists = backup ? backup.playlists.filter((_, i) => !skip[i]) : []
-  const selectedTracks = selectedPlaylists.reduce((n, p) => n + (p.trackCount || 0), 0)
+  const artistCount = backup?.followedArtists?.length || 0
+  const nothingSelected = selectedPlaylists.length === 0 && skipLiked && (skipArtists || artistCount === 0)
 
   function setAll(deselect) {
     const next = {}
     if (deselect) backup.playlists.forEach((_, i) => (next[i] = true))
     setSkip(next)
     setSkipLiked(deselect)
+    setSkipArtists(deselect)
   }
 
   return (
@@ -112,7 +152,7 @@ export default function Home() {
               stream<span>lify</span>Backup
             </h1>
           </div>
-          <p className="sub">Load your Spotify playlists and liked songs, switch to another account, and copy them over — no files to download.</p>
+          <p className="sub">Load your Spotify playlists, liked songs and followed artists, switch accounts, and copy them over — no files needed.</p>
 
           {!me ? (
             <>
@@ -134,7 +174,7 @@ export default function Home() {
                   <span className="n">1</span>
                   <div className="body">
                     <h3>Load your library</h3>
-                    <p>Show all playlists and liked songs from this account here.</p>
+                    <p>Show all playlists, liked songs and followed artists from this account here.</p>
                     <button className="btn primary" disabled={!!busy} onClick={loadLibrary}>
                       {busy === 'load' ? <><span className="spinner" /> Loading…</> : 'Load library'}
                     </button>
@@ -149,6 +189,7 @@ export default function Home() {
                     <button onClick={() => setAll(false)}>Select all</button>
                     <span style={{ color: 'var(--border)' }}>|</span>
                     <button onClick={() => setAll(true)}>Clear</button>
+                    <button style={{ marginLeft: 'auto' }} onClick={downloadBackup}>Download .json</button>
                   </div>
 
                   <div className="lib">
@@ -159,6 +200,15 @@ export default function Home() {
                         <span className="meta">{backup.likedSongs.length} songs</span>
                       </span>
                     </label>
+                    {artistCount > 0 && (
+                      <label className="lib-item">
+                        <input className="chk" type="checkbox" checked={!skipArtists} onChange={(e) => setSkipArtists(!e.target.checked)} />
+                        <span className="grow">
+                          <h4>★ Followed Artists</h4>
+                          <span className="meta">{artistCount} artists</span>
+                        </span>
+                      </label>
+                    )}
                     {backup.playlists.map((pl, i) => (
                       <label className="lib-item" key={i}>
                         <input className="chk" type="checkbox" checked={!skip[i]} onChange={(e) => setSkip((s) => ({ ...s, [i]: !e.target.checked }))} />
@@ -170,6 +220,13 @@ export default function Home() {
                     ))}
                   </div>
 
+                  {busy === 'transfer' && progress && (
+                    <div className="progress">
+                      <div className="bar"><div className="fill" style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 100}%` }} /></div>
+                      <div className="label">Transferring {progress.done}/{progress.total}{progress.name ? ` · ${progress.name}` : ''}</div>
+                    </div>
+                  )}
+
                   {onSourceAccount ? (
                     <>
                       <p className="hint">Now switch to the account you want to copy into. Your selection is saved.</p>
@@ -178,7 +235,7 @@ export default function Home() {
                       </a>
                     </>
                   ) : (
-                    <button className="btn primary full" disabled={!!busy || (selectedPlaylists.length === 0 && skipLiked)} onClick={transfer}>
+                    <button className="btn primary full" disabled={!!busy || nothingSelected} onClick={transfer}>
                       {busy === 'transfer' ? <><span className="spinner" /> Transferring…</> : `Transfer to ${me.name}`}
                     </button>
                   )}
@@ -205,7 +262,11 @@ export default function Home() {
             </div>
           )}
         </div>
-        <footer>Uses the official Spotify API. We only read and write what you allow. Songs are never downloaded.</footer>
+        <footer>
+          Uses the official Spotify API. We only read and write what you allow. Songs are never downloaded.
+          <br />
+          <a className="store" href="https://streamlify.shop/" target="_blank" rel="noopener noreferrer">Visit our store ↗</a>
+        </footer>
       </main>
     </>
   )
