@@ -3,12 +3,7 @@ import { chunk, trackId } from '../../../lib/spotify'
 
 const API = 'https://api.spotify.com/v1'
 
-// Which playlists should be recreated on the new account? true = create, false = skip.
-// pl has: name, owned (true if the old account created it), public, trackCount.
-function shouldImportPlaylist(pl) {
-  // TODO(human)
-}
-
+// The client sends only the playlists the user selected, so we recreate every one received.
 async function spPost(token, url, body) {
   const r = await fetch(API + url, {
     method: 'POST',
@@ -38,7 +33,6 @@ export async function POST(req) {
     let playlistsMade = 0
     let tracksAdded = 0
     for (const pl of backup.playlists || []) {
-      if (!shouldImportPlaylist(pl)) continue
       const created = await spPost(token, `/users/${me.id}/playlists`, {
         name: pl.name,
         description: pl.description || '',

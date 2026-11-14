@@ -17,5 +17,7 @@ export async function GET() {
     scope: SCOPES,
     show_dialog: 'true', // always show the account picker so users can switch from account A to B
   })
-  return NextResponse.redirect(`https://accounts.spotify.com/authorize?${params.toString()}`)
+  const res = NextResponse.redirect(`https://accounts.spotify.com/authorize?${params.toString()}`)
+  res.cookies.delete('sp_token') // drop the previous account before a new login (clean switch)
+  return res
 }

@@ -1,6 +1,14 @@
 'use client'
 import { useEffect, useState } from 'react'
 
+const KEY = 'slb_backup' // localStorage: keeps the exported library across the account switch
+
+const LOGIN_ERRORS = {
+  denied: 'Login was cancelled on Spotify.',
+  config: 'Server is missing the Spotify Client Secret. Add it to .env.local and restart the server.',
+  token: 'Spotify rejected the login. Check that the Client ID and Client Secret are correct.',
+}
+
 function SpotifyIcon({ size = 22, color = 'currentColor' }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill={color} aria-hidden="true">
@@ -9,14 +17,11 @@ function SpotifyIcon({ size = 22, color = 'currentColor' }) {
   )
 }
 
-const LOGIN_ERRORS = {
-  denied: 'Login was cancelled on Spotify.',
-  config: 'Server is missing the Spotify Client Secret. Add it to .env.local and restart the server.',
-  token: 'Spotify rejected the login. Check that the Client ID and Client Secret are correct.',
-}
-
 export default function Home() {
   const [me, setMe] = useState(null)
+  const [backup, setBackup] = useState(null)
+  const [skip, setSkip] = useState({}) // { [playlistIndex]: true } means deselected
+  const [skipLiked, setSkipLiked] = useState(false)
   const [busy, setBusy] = useState('')
   const [result, setResult] = useState(null) // { ok, text }
 
@@ -24,53 +29,74 @@ export default function Home() {
     const err = new URLSearchParams(window.location.search).get('error')
     if (err) {
       setResult({ ok: false, text: LOGIN_ERRORS[err] || 'Login failed. Please try again.' })
-      window.history.replaceState(null, '', '/') // clean the URL so a refresh doesn't repeat the error
+      window.history.replaceState(null, '', '/')
     }
+    try {
+      const raw = localStorage.getItem(KEY)
+      if (raw) setBackup(JSON.parse(raw))
+    } catch {}
     fetch('/api/me')
       .then((r) => r.json())
       .then((d) => setMe(d.connected ? d : null))
       .catch(() => setMe(null))
   }, [])
 
-  async function doExport() {
-    setBusy('export')
+  async function loadLibrary() {
+    setBusy('load')
     setResult(null)
     try {
       const r = await fetch('/api/export')
       const data = await r.json()
       if (data.error) throw new Error(data.error)
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-      const a = document.createElement('a')
-      a.href = URL.createObjectURL(blob)
-      a.download = 'streamlify-backup.json'
-      a.click()
-      URL.revokeObjectURL(a.href)
-      setResult({ ok: true, text: `Export complete: ${data.playlists.length} playlists and ${data.likedSongs.length} liked songs. Your backup file has been downloaded.` })
+      setBackup(data)
+      setSkip({})
+      setSkipLiked(false)
+      // shortcut: localStorage caps around 5 MB, fine for normal libraries; huge ones may not persist the switch
+      try { localStorage.setItem(KEY, JSON.stringify(data)) } catch {}
+      setResult({ ok: true, text: `Loaded ${data.playlists.length} playlists and ${data.likedSongs.length} liked songs.` })
     } catch (e) {
       setResult({ ok: false, text: e.message })
     }
     setBusy('')
   }
 
-  async function doImport(e) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setBusy('import')
+  async function transfer() {
+    setBusy('transfer')
     setResult(null)
     try {
+      const payload = {
+        playlists: backup.playlists.filter((_, i) => !skip[i]),
+        likedSongs: skipLiked ? [] : backup.likedSongs,
+      }
       const r = await fetch('/api/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: await file.text(),
+        body: JSON.stringify(payload),
       })
       const d = await r.json()
       if (d.error) throw new Error(d.error)
-      setResult({ ok: true, text: `Import complete for ${d.importedTo}: ${d.playlistsMade} playlists, ${d.tracksAdded} tracks and ${d.likedAdded} liked songs.` })
-    } catch (err) {
-      setResult({ ok: false, text: err.message })
+      setResult({ ok: true, text: `Transferred to ${d.importedTo}: ${d.playlistsMade} playlists, ${d.tracksAdded} tracks and ${d.likedAdded} liked songs.` })
+    } catch (e) {
+      setResult({ ok: false, text: e.message })
     }
     setBusy('')
-    e.target.value = ''
+  }
+
+  function startOver() {
+    try { localStorage.removeItem(KEY) } catch {}
+    setBackup(null)
+    setResult(null)
+  }
+
+  const onSourceAccount = backup && me && backup.account?.id === me.id
+  const selectedPlaylists = backup ? backup.playlists.filter((_, i) => !skip[i]) : []
+  const selectedTracks = selectedPlaylists.reduce((n, p) => n + (p.trackCount || 0), 0)
+
+  function setAll(deselect) {
+    const next = {}
+    if (deselect) backup.playlists.forEach((_, i) => (next[i] = true))
+    setSkip(next)
+    setSkipLiked(deselect)
   }
 
   return (
@@ -86,12 +112,15 @@ export default function Home() {
               stream<span>lify</span>Backup
             </h1>
           </div>
-          <p className="sub">Back up your Spotify playlists and liked songs, then move them to a new account in a few taps.</p>
+          <p className="sub">Load your Spotify playlists and liked songs, switch to another account, and copy them over — no files to download.</p>
 
           {!me ? (
-            <a className="btn primary full" href="/api/login">
-              <SpotifyIcon size={20} /> Log in with Spotify
-            </a>
+            <>
+              <a className="btn primary full" href="/api/login">
+                <SpotifyIcon size={20} /> Log in with Spotify
+              </a>
+              {backup && <p className="hint" style={{ marginTop: 14 }}>Your loaded library is saved. Log in with the account you want to copy it into.</p>}
+            </>
           ) : (
             <>
               <div className="who">
@@ -100,45 +129,72 @@ export default function Home() {
                 <span className="dot" title="Connected" />
               </div>
 
-              <div className="steps">
+              {!backup ? (
                 <div className="step">
                   <span className="n">1</span>
                   <div className="body">
-                    <h3>Export</h3>
-                    <p>Save the playlists and liked songs from your old account as a JSON file.</p>
-                    <button className="btn primary" disabled={!!busy} onClick={doExport}>
-                      {busy === 'export' ? <><span className="spinner" /> Exporting…</> : 'Export backup'}
+                    <h3>Load your library</h3>
+                    <p>Show all playlists and liked songs from this account here.</p>
+                    <button className="btn primary" disabled={!!busy} onClick={loadLibrary}>
+                      {busy === 'load' ? <><span className="spinner" /> Loading…</> : 'Load library'}
                     </button>
                   </div>
                 </div>
-
-                <div className="step">
-                  <span className="n">2</span>
-                  <div className="body">
-                    <h3>Switch account</h3>
-                    <p>Log in with your new Spotify account.</p>
-                    <a className="btn ghost" href="/api/login">
-                      <SpotifyIcon size={18} /> Use another account
-                    </a>
+              ) : (
+                <>
+                  <p className="section-label">
+                    Library from <b>{backup.account?.name}</b> — pick what to copy
+                  </p>
+                  <div className="toolbar">
+                    <button onClick={() => setAll(false)}>Select all</button>
+                    <span style={{ color: 'var(--border)' }}>|</span>
+                    <button onClick={() => setAll(true)}>Clear</button>
                   </div>
-                </div>
 
-                <div className="step">
-                  <span className="n">3</span>
-                  <div className="body">
-                    <h3>Import</h3>
-                    <p>Choose your backup file and everything is recreated on the new account.</p>
-                    <label className={`btn primary${busy ? ' disabled' : ''}`} aria-disabled={!!busy}>
-                      {busy === 'import' ? <><span className="spinner" /> Importing…</> : 'Choose backup file'}
-                      <input type="file" accept="application/json,.json" onChange={doImport} hidden disabled={!!busy} />
+                  <div className="lib">
+                    <label className="lib-item">
+                      <input className="chk" type="checkbox" checked={!skipLiked} onChange={(e) => setSkipLiked(!e.target.checked)} />
+                      <span className="grow">
+                        <h4>❤ Liked Songs</h4>
+                        <span className="meta">{backup.likedSongs.length} songs</span>
+                      </span>
                     </label>
+                    {backup.playlists.map((pl, i) => (
+                      <label className="lib-item" key={i}>
+                        <input className="chk" type="checkbox" checked={!skip[i]} onChange={(e) => setSkip((s) => ({ ...s, [i]: !e.target.checked }))} />
+                        <span className="grow">
+                          <h4>{pl.name}</h4>
+                          <span className="meta">{pl.trackCount} tracks{pl.owned ? '' : ' · followed'}</span>
+                        </span>
+                      </label>
+                    ))}
                   </div>
-                </div>
-              </div>
 
-              <a className="logout" href="/api/logout">
-                Log out
-              </a>
+                  {onSourceAccount ? (
+                    <>
+                      <p className="hint">Now switch to the account you want to copy into. Your selection is saved.</p>
+                      <a className="btn primary full" href="/api/login">
+                        <SpotifyIcon size={18} /> Switch to another account
+                      </a>
+                    </>
+                  ) : (
+                    <button className="btn primary full" disabled={!!busy || (selectedPlaylists.length === 0 && skipLiked)} onClick={transfer}>
+                      {busy === 'transfer' ? <><span className="spinner" /> Transferring…</> : `Transfer to ${me.name}`}
+                    </button>
+                  )}
+
+                  <div className="row-links">
+                    <button className="linkbtn" onClick={startOver}>Start over</button>
+                    <a className="linkbtn" href="/api/logout">Log out</a>
+                  </div>
+                </>
+              )}
+
+              {!backup && (
+                <a className="logout" href="/api/logout">
+                  Log out
+                </a>
+              )}
             </>
           )}
 
