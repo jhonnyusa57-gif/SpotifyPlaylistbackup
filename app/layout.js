@@ -1,7 +1,7 @@
 import './globals.css'
 
 export const metadata = {
-  title: 'streamlifyBackup',
+  title: 'Streamlify',
   description: 'Back up and migrate your Spotify playlists and liked songs',
 }
 

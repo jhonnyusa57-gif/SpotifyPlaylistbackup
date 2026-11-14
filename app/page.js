@@ -9,6 +9,17 @@ const LOGIN_ERRORS = {
   token: 'Spotify rejected the login. Check that the Client ID and Client Secret are correct.',
 }
 
+// Original app logo (a music note) — not Spotify's mark, so the app has its own identity
+function BrandMark() {
+  return (
+    <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M9 18V6l11-2v10" fill="none" stroke="#03200e" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx="6.3" cy="18" r="2.6" fill="#03200e" />
+      <circle cx="18.3" cy="16" r="2.6" fill="#03200e" />
+    </svg>
+  )
+}
+
 function SpotifyIcon({ size = 22, color = 'currentColor' }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill={color} aria-hidden="true">
@@ -146,10 +157,10 @@ export default function Home() {
         <div className="card">
           <div className="brand">
             <span className="mark">
-              <SpotifyIcon size={24} color="#03200e" />
+              <BrandMark />
             </span>
             <h1 className="logo">
-              stream<span>lify</span>Backup
+              Stream<span>lify</span>
             </h1>
           </div>
           <p className="sub">Load your Spotify playlists, liked songs and followed artists, switch accounts, and copy them over — no files needed.</p>
@@ -267,8 +278,6 @@ export default function Home() {
         </div>
         <footer>
           Uses the official Spotify API. We only read and write what you allow. Songs are never downloaded.
-          <br />
-          <a className="store" href="https://streamlify.shop/" target="_blank" rel="noopener noreferrer">Visit our store ↗</a>
         </footer>
       </main>
     </>

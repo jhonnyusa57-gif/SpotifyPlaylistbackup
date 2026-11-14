@@ -167,10 +167,6 @@ input.chk { width: 20px; height: 20px; flex: none; accent-color: var(--green); c
 .progress .fill { height: 100%; background: var(--green); border-radius: 999px; transition: width .3s ease; }
 .progress .label { font-size: 12px; color: var(--muted); margin-top: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* store link */
-.store { color: var(--green-hi); text-decoration: none; font-weight: 600; display: inline-block; margin-top: 8px; }
-.store:hover { text-decoration: underline; }
-
 footer { color: var(--muted); font-size: 12px; text-align: center; max-width: 420px; line-height: 1.5; padding: 0 8px; }
 
 /* Phones: card stays centered, buttons go full width, steps get more breathing room */
