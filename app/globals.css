@@ -146,6 +146,17 @@ body {
 input.chk { width: 20px; height: 20px; flex: none; accent-color: var(--green); cursor: pointer; }
 .hint { font-size: 13px; color: var(--muted); line-height: 1.5; margin: 2px 0 12px; }
 .hint b { color: var(--green-hi); }
+
+/* highlighted callout (how to switch accounts) */
+.callout {
+  display: flex; gap: 10px; align-items: flex-start;
+  background: rgba(29, 185, 84, 0.12);
+  border: 1px solid rgba(29, 185, 84, 0.4); border-left-width: 4px;
+  border-radius: 12px; padding: 13px 14px; margin-bottom: 14px;
+}
+.callout-ic { flex: none; font-size: 17px; line-height: 1.4; }
+.callout p { font-size: 13.5px; line-height: 1.55; color: var(--text); }
+.callout b { color: var(--green-hi); font-weight: 700; }
 .row-links { display: flex; justify-content: space-between; margin-top: 16px; }
 .linkbtn { background: none; border: 0; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; text-decoration: none; padding: 2px; }
 .linkbtn:hover { color: var(--text); }
